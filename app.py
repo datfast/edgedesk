@@ -29,7 +29,7 @@ ALL_TICKERS = INDICES + [VIX] + KEY_STOCKS
 
 st.set_page_config(
     page_title="EdgeDesk",
-    page_icon="✦",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )# ── Bright, clean, eye-appealing theme ──────────────────────────────
@@ -613,7 +613,7 @@ def page_pre_market(session: dict):
 def main():
     st.markdown("""
     <div style="margin-bottom: 0.5rem;">
-        <h1 style="margin-bottom: 0.15rem; font-size: 2.1rem;">✦ EdgeDesk</h1>
+        <h1 style="margin-bottom: 0.15rem; font-size: 2.1rem;"> EdgeDesk</h1>
         <p style="color: #64748b; margin-top: 0; font-size: 1.05rem;">
             Clean trading desk  ·  TJR + Minervini  ·  Live data
         </p>
