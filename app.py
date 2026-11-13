@@ -611,14 +611,8 @@ def page_pre_market(session: dict):
 
 
 def main():
-    st.markdown("""
-    <div style="margin-bottom: 0.5rem;">
-        <h1 style="margin-bottom: 0.15rem; font-size: 2.1rem;"> EdgeDesk</h1>
-        <p style="color: #64748b; margin-top: 0; font-size: 1.05rem;">
-            Clean trading desk  -  TJR - Minervini  -  Live data
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+            st.title("EdgeDesk")
+    st.caption("Clean trading desk - TJR - Minervini - Live data")
 
     st.caption("On phone: open in Safari/Chrome → Share → Add to Home Screen for app-like use.")
 
