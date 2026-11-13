@@ -35,117 +35,17 @@ st.set_page_config(
 )# ── Bright, clean, eye-appealing theme ──────────────────────────────
 st.markdown("""
 <style>
-    .stApp {
-        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-        color: #1e293b;
-    }
-    .main .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 2rem;
-        max-width: 1200px;
-    }
-    [data-testid="stSidebar"] {
-        background: #ffffff;
-        border-right: 1px solid #e2e8f0;
-    }
-    [data-testid="stSidebar"] .stMarkdown {
-        color: #334155;
-    }
-    h1 {
-        color: #0f172a !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.5px;
-    }
-    h2, h3 {
-        color: #1e293b !important;
-        font-weight: 600 !important;
-    }
-    [data-testid="stMetric"] {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 16px 20px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    }
-    [data-testid="stMetricLabel"] {
-        color: #64748b !important;
-        font-size: 0.85rem !important;
-    }
-    [data-testid="stMetricValue"] {
-        color: #0f172a !important;
-        font-weight: 700 !important;
-    }
-    .stButton > button {
-        border-radius: 10px;
-        font-weight: 600;
-        border: none;
-        transition: all 0.15s ease;
-    }
-    .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-        color: white;
-        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
-    }
-    .stButton > button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
-        transform: translateY(-1px);
-    }
-    .stButton > button[kind="secondary"] {
-        background: #f1f5f9;
-        color: #334155;
-        border: 1px solid #e2e8f0;
-    }
-    [data-testid="stExpander"] {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    }
-    .stTextInput > div > div > input,
-    .stNumberInput > div > div > input,
-    .stSelectbox > div > div {
-        border-radius: 8px;
-        border: 1px solid #e2e8f0;
-        background: #ffffff;
-    }
-    .stSuccess {
-        background: #ecfdf5;
-        border: 1px solid #a7f3d0;
-        border-radius: 10px;
-        color: #065f46;
-    }
-    .stInfo {
-        background: #eff6ff;
-        border: 1px solid #bfdbfe;
-        border-radius: 10px;
-        color: #1e40af;
-    }
-    .stWarning {
-        background: #fffbeb;
-        border: 1px solid #fde68a;
-        border-radius: 10px;
-        color: #92400e;
-    }
-    .stError {
-        background: #fef2f2;
-        border: 1px solid #fecaca;
-        border-radius: 10px;
-        color: #991b1b;
-    }
-    .stDataFrame {
-        border-radius: 12px;
-        overflow: hidden;
-        border: 1px solid #e2e8f0;
-    }
-    .stRadio label, .stCheckbox label {
-        color: #334155 !important;
-    }
-    [data-testid="stSidebar"] .stRadio > div {
-        gap: 0.35rem;
-    }
-    .stCaption, [data-testid="stCaptionContainer"] {
-        color: #64748b !
+.stApp {
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    color: #1e293b;
+}
+.main .block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+    max-width: 1200px;
+}
+</style>
+""", unsafe_allow_html=True)
         # ─────────────────────────────────────────────
 # SESSION HELPERS
 # ─────────────────────────────────────────────
