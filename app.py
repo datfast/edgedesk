@@ -551,10 +551,10 @@ def page_pre_market(session: dict):
 
     st.markdown("""
 **Quick Decision Tree**
-1. Pre-market scan → set bias  
+1. Pre-market scan - set bias  
 2. Map Asia / London / PDH / PDL  
-3. Sweep + MSS + zone? → TJR plan  
-4. High-RVOL + VCP pivot break? → Equity plan  
+3. Sweep + MSS + zone? - TJR plan  
+4. High-RVOL + VCP pivot break? - Equity plan  
 5. Only take **A / A+** setups
 """)
 
