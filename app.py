@@ -615,7 +615,7 @@ def main():
     <div style="margin-bottom: 0.5rem;">
         <h1 style="margin-bottom: 0.15rem; font-size: 2.1rem;"> EdgeDesk</h1>
         <p style="color: #64748b; margin-top: 0; font-size: 1.05rem;">
-            Clean trading desk  ·  TJR + Minervini  ·  Live data
+            Clean trading desk  -  TJR - Minervini  -  Live data
         </p>
     </div>
     """, unsafe_allow_html=True)
