@@ -549,15 +549,12 @@ def page_pre_market(session: dict):
             def page_plans(session: dict):
     st.header("Decision Tree & Trade Plans")
 
-    st.markdown("""
-**Quick Decision Tree**
-1. Pre-market scan - set bias  
-2. Map Asia / London / PDH / PDL  
-3. Sweep + MSS + zone? - TJR plan  
-4. High-RVOL + VCP pivot break? - Equity plan  
-5. Only take **A / A+** setups
-""")
-
+        st.subheader("Quick Decision Tree")
+    st.write("1. Pre-market scan - set bias")
+    st.write("2. Map Asia / London / PDH / PDL")
+    st.write("3. Sweep + MSS + zone? - TJR plan")
+    st.write("4. High-RVOL + VCP pivot break? - Equity plan")
+    st.write("5. Only take A / A+ setups")
     bias = st.selectbox(
         "Override bias for today",
         ["Bullish", "Neutral", "Bearish"],
