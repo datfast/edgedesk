@@ -163,39 +163,10 @@ def fetch_market_data(period: str = "5d") -> Dict[str, pd.DataFrame]:
         snap["suggested_bias"] = "Neutral"
 
     return snap
-    def render_snapshot(snap: Dict[str, Any]):
-        st.caption(f"As of {snap.get('timestamp', '—')}")
-
-        cols = st.columns(4)
-    for i, t in enumerate(INDICES):
-        info = snap.get("indices", {}).get(t)
-        if info:
-            delta = f"{info['change_pct']:+.2f}%"
-            cols[i].metric(t, f"{info['last']:.2f}", delta)
-
-    if snap.get("vix") is not None:
-        cols[3].metric("VIX", f"{snap['vix']:.2f}")
-
-    st.markdown(f"**Suggested Bias:** `{snap.get('suggested_bias', 'Neutral')}`")
-    for note in snap.get("notes", []):
-        st.info(note)
-
-    stocks = snap.get("stocks", {})
-    if stocks:
-        rows = []
-        for t, info in sorted(stocks.items(), key=lambda x: x[1]["change_pct"], reverse=True):
-            rows.append({
-                "Ticker": t,
-                "Last": info["last"],
-                "Chg %": info["change_pct"],
-                "RVOL": info["rvol"],
-            })
-        df = pd.DataFrame(rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
-        high_rvol = [t for t, info in stocks.items() if info.get("rvol", 0) >= 1.8]
-        if high_rvol:
-            st.success(f"Elevated RVOL names: {', '.join(high_rvol)}")
+    def render_snapshot(snap):
+        st.caption("Market snapshot loaded")
+        st.write(snap.get("suggested_bias", "Neutral"))
+          
 
 def page_pre_market(session: dict):
     st.header("Pre-Market / Live Market Scan")
