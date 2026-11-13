@@ -98,7 +98,7 @@ def fetch_market_data(period: str = "5d") -> Dict[str, pd.DataFrame]:
             continue
     return results
     def compute_snapshot(data: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
-    snap = {
+        snap = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "indices": {},
         "vix": None,
