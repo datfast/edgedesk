@@ -164,7 +164,7 @@ def fetch_market_data(period: str = "5d") -> Dict[str, pd.DataFrame]:
 
     return snap
     def render_snapshot(snap: Dict[str, Any]):
-    st.caption(f"As of {snap.get('timestamp', '—')}")
+        st.caption(f"As of {snap.get('timestamp', '—')}")
 
     cols = st.columns(4)
     for i, t in enumerate(INDICES):
