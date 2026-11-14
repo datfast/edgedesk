@@ -11,7 +11,7 @@ DATA_DIR = Path("edgedesk_data")
 DATA_DIR.mkdir(exist_ok=True)
 
 INDICES = ["SPY", "QQQ", "IWM"]
-KEY_STOCKS = ["NVDA", "TSLA", "AMD", "AAPL", "META", "AMZN", "MSFT", "GOOGL"]
+FALLBACK_FOCUS = ["NVDA", "TSLA", "AMD", "AAPL"]
 
 st.set_page_config(page_title="EdgeDesk", page_icon="📊", layout="wide")
 
@@ -200,6 +200,21 @@ def show_chart(ticker):
     except Exception:
         st.caption("Chart unavailable")
 
+def get_focus_tickers():
+    try:
+        r = requests.get(
+            "https://api.stocktwits.com/api/2/trending/symbols.json",
+            timeout=6
+        )
+        if r.status_code == 200:
+            symbols = r.json().get("symbols", [])[:4]
+            tickers = [s.get("symbol") for s in symbols if s.get("symbol")]
+            if tickers:
+                return tickers
+    except Exception:
+        pass
+    return FALLBACK_FOCUS
+
 def get_stocktwits_trending():
     try:
         r = requests.get(
@@ -222,8 +237,56 @@ def get_stocktwits_trending():
     except Exception:
         return []
 
+def get_macro_events(limit=6):
+    try:
+        cals = yf.Calendars()
+        df = cals.get_economic_events_calendar(limit=40)
+        if df is None or df.empty:
+            return []
+        # Prefer US / major events
+        us = df[df["Region"].astype(str).str.upper().isin(["US", "UNITED STATES"])]
+        source = us if not us.empty else df
+        events = []
+        for name, row in source.head(limit).iterrows():
+            time_str = ""
+            if "Event Time" in row and row["Event Time"]:
+                try:
+                    time_str = str(row["Event Time"])[:16].replace("T", " ")
+                except Exception:
+                    time_str = str(row["Event Time"])
+            events.append({
+                "name": str(name).replace("*", ""),
+                "time": time_str,
+                "region": str(row.get("Region", "")),
+                "forecast": row.get("Forecast", ""),
+                "previous": row.get("Previous", ""),
+            })
+        return events
+    except Exception:
+        return []
+
 def page_main(session):
     st.title("EdgeDesk")
+
+    st.subheader("Macro")
+    events = get_macro_events()
+    if events:
+        for e in events:
+            line = f"**{e['name']}**"
+            if e["time"]:
+                line += f" · {e['time']}"
+            if e["region"]:
+                line += f" ({e['region']})"
+            st.write(line)
+            extra = []
+            if e["forecast"] not in ("", None, "nan"):
+                extra.append(f"Forecast {e['forecast']}")
+            if e["previous"] not in ("", None, "nan"):
+                extra.append(f"Prev {e['previous']}")
+            if extra:
+                st.caption(" · ".join(extra))
+    else:
+        st.caption("Calendar unavailable")
 
     st.subheader("Market")
     cols = st.columns(3)
@@ -235,11 +298,14 @@ def page_main(session):
             cols[i].metric(t, "—")
 
     st.subheader("Focus")
-    fcols = st.columns(4)
-    for i, t in enumerate(KEY_STOCKS[:4]):
+    focus = get_focus_tickers()
+    fcols = st.columns(len(focus) if focus else 1)
+    for i, t in enumerate(focus):
         q = get_quote(t)
         if q:
             fcols[i].metric(t, f"${q['price']}", f"{q['change']:+.2f}%")
+        else:
+            fcols[i].metric(t, "—")
 
     st.subheader("Trending")
     trending = get_stocktwits_trending()
