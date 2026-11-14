@@ -513,14 +513,22 @@ def page_main(session):
         session["paper"] = []
 
     with st.expander("Open paper trade"):
-        pc1, pc2, pc3 = st.columns(3)
+        pc1, pc2 = st.columns(2)
         pt = pc1.text_input("Ticker", key="paper_t").strip().upper()
         pdir = pc2.selectbox("Side", ["Long", "Short"], key="paper_dir")
-        pentry = pc3.number_input("Entry", min_value=0.0, value=0.0, step=0.01, key="paper_entry")
-        pc4, pc5, pc6 = st.columns(3)
+
+        default_entry = 0.0
+        if pt:
+            q = get_quote(pt)
+            if q:
+                default_entry = q["price"]
+
+        pc3, pc4, pc5 = st.columns(3)
+        pentry = pc3.number_input("Entry", min_value=0.0, value=default_entry, step=0.01, key="paper_entry")
         pstop = pc4.number_input("Stop", min_value=0.0, value=0.0, step=0.01, key="paper_stop")
         ptp15 = pc5.number_input("1.5R", min_value=0.0, value=0.0, step=0.01, key="paper_tp15")
-        ptp2 = pc6.number_input("2R", min_value=0.0, value=0.0, step=0.01, key="paper_tp2")
+        ptp2 = st.number_input("2R", min_value=0.0, value=0.0, step=0.01, key="paper_tp2")
+
         if st.button("Open", key="open_paper") and pt and pentry > 0:
             session["paper"].append({
                 "ticker": pt,
