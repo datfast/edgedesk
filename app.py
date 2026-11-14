@@ -7,6 +7,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 import pandas as pd
+import time
 
 DATA_DIR = Path("edgedesk_data")
 DATA_DIR.mkdir(exist_ok=True)
@@ -254,61 +255,60 @@ def broker_links(ticker):
     links.append(f"[Coinbase](https://www.coinbase.com/price/{clean.lower()})")
     return " · ".join(links)
 
-def get_ideas(limit=5):
+def calc_levels(ticker, price):
+    try:
+        hist = yf.Ticker(ticker).history(period="1mo")
+        if len(hist) < 14:
+            stop_pct = 2.0
+        else:
+            high = hist["High"]
+            low = hist["Low"]
+            close = hist["Close"]
+            tr = pd.DataFrame({
+                "hl": high - low,
+                "hc": (high - close.shift()).abs(),
+                "lc": (low - close.shift()).abs()
+            }).max(axis=1)
+            atr = tr.rolling(14).mean().iloc[-1]
+            stop_pct = round((atr / price) * 100 * 1.5, 1)
+            if stop_pct < 1.0:
+                stop_pct = 1.0
+            if stop_pct > 5.0:
+                stop_pct = 5.0
+        stop_price = round(price * (1 - stop_pct / 100), 2)
+        risk_per = price - stop_price
+        return {
+            "stop": stop_price,
+            "stop_pct": stop_pct,
+            "tp15": round(price + risk_per * 1.5, 2),
+            "tp2": round(price + risk_per * 2, 2)
+        }
+    except Exception:
+        stop_price = round(price * 0.98, 2)
+        risk_per = price - stop_price
+        return {
+            "stop": stop_price,
+            "stop_pct": 2.0,
+            "tp15": round(price + risk_per * 1.5, 2),
+            "tp2": round(price + risk_per * 2, 2)
+        }
+
+def get_ideas(lean_type="Lean long", limit=5):
     watch = ["NVDA", "TSLA", "AMD", "AAPL", "META", "AMZN", "MSFT", "GOOGL", "AVGO", "NFLX"]
     ideas = []
     for t in watch:
         bias = get_technical_bias(t)
-        if bias and bias.get("lean") == "Lean long":
+        if bias and bias.get("lean") == lean_type:
             q = get_quote(t)
             if not q:
                 continue
-            try:
-                hist = yf.Ticker(t).history(period="1mo")
-                price = q["price"]
-                if len(hist) < 14:
-                    stop_pct = 2.0
-                else:
-                    high = hist["High"]
-                    low = hist["Low"]
-                    close = hist["Close"]
-                    tr = pd.DataFrame({
-                        "hl": high - low,
-                        "hc": (high - close.shift()).abs(),
-                        "lc": (low - close.shift()).abs()
-                    }).max(axis=1)
-                    atr = tr.rolling(14).mean().iloc[-1]
-                    stop_pct = round((atr / price) * 100 * 1.5, 1)
-                    if stop_pct < 1.0:
-                        stop_pct = 1.0
-                    if stop_pct > 5.0:
-                        stop_pct = 5.0
-                stop_price = round(price * (1 - stop_pct / 100), 2)
-                risk_per = price - stop_price
-                tp15 = round(price + risk_per * 1.5, 2)
-                tp2 = round(price + risk_per * 2, 2)
-                ideas.append({
-                    "ticker": t,
-                    "price": price,
-                    "change": q["change"],
-                    "stop": stop_price,
-                    "stop_pct": stop_pct,
-                    "tp15": tp15,
-                    "tp2": tp2
-                })
-            except Exception:
-                price = q["price"]
-                stop_price = round(price * 0.98, 2)
-                risk_per = price - stop_price
-                ideas.append({
-                    "ticker": t,
-                    "price": price,
-                    "change": q["change"],
-                    "stop": stop_price,
-                    "stop_pct": 2.0,
-                    "tp15": round(price + risk_per * 1.5, 2),
-                    "tp2": round(price + risk_per * 2, 2)
-                })
+            levels = calc_levels(t, q["price"])
+            ideas.append({
+                "ticker": t,
+                "price": q["price"],
+                "change": q["change"],
+                **levels
+            })
         if len(ideas) >= limit:
             break
     return ideas
@@ -324,6 +324,12 @@ def page_main(session):
         st.caption("Below 30: often oversold")
         st.caption("Around 50: neutral")
         st.caption("Used as one check for the bias and lean. Not a signal by itself.")
+        st.divider()
+        auto = st.checkbox("Auto-refresh (2 min)", key="auto_refresh")
+
+    if auto:
+        time.sleep(120)
+        st.rerun()
 
     st.subheader("Macro")
     events = get_macro_events()
@@ -372,17 +378,41 @@ def page_main(session):
         q = get_quote(t)
         fcols[i].metric(t, f"${q['price']}" if q else "-", f"{q['change']:+.2f}%" if q else None)
 
-    st.subheader("Ideas")
-    ideas = get_ideas()
-    if ideas:
-        for item in ideas:
+    st.subheader("Long Ideas")
+    long_ideas = get_ideas("Lean long")
+    if long_ideas:
+        for idx, item in enumerate(long_ideas):
             with st.container():
-                c1, c2 = st.columns([2, 3])
+                c1, c2, c3 = st.columns([2, 3, 1])
                 c1.metric(item["ticker"], f"${item['price']}", f"{item['change']:+.2f}%")
                 c2.caption("Lean long")
                 c2.caption(f"Stop ${item['stop']} ({item['stop_pct']}%)")
                 c2.caption(f"1.5R ${item['tp15']} · 2R ${item['tp2']}")
-                st.divider()
+                if c3.button("Add", key=f"add_long_{idx}"):
+                    wl = session.setdefault("watchlist", [])
+                    if item["ticker"] not in wl:
+                        wl.append(item["ticker"])
+                        save_session(session)
+                        st.rerun()
+    else:
+        st.caption("None right now")
+
+    st.subheader("Short Ideas")
+    short_ideas = get_ideas("Lean short")
+    if short_ideas:
+        for idx, item in enumerate(short_ideas):
+            with st.container():
+                c1, c2, c3 = st.columns([2, 3, 1])
+                c1.metric(item["ticker"], f"${item['price']}", f"{item['change']:+.2f}%")
+                c2.caption("Lean short")
+                c2.caption(f"Stop ${item['stop']} ({item['stop_pct']}%)")
+                c2.caption(f"1.5R ${item['tp15']} · 2R ${item['tp2']}")
+                if c3.button("Add", key=f"add_short_{idx}"):
+                    wl = session.setdefault("watchlist", [])
+                    if item["ticker"] not in wl:
+                        wl.append(item["ticker"])
+                        save_session(session)
+                        st.rerun()
     else:
         st.caption("None right now")
 
@@ -415,35 +445,8 @@ def page_main(session):
                 st.write(f"**Lean:** {bias['lean']}")
                 for n in bias["notes"]:
                     st.caption(n)
-
-            try:
-                hist = yf.Ticker(display).history(period="1mo")
-                price = q["price"]
-                if len(hist) < 14:
-                    stop_pct = 2.0
-                else:
-                    high = hist["High"]
-                    low = hist["Low"]
-                    close = hist["Close"]
-                    tr = pd.DataFrame({
-                        "hl": high - low,
-                        "hc": (high - close.shift()).abs(),
-                        "lc": (low - close.shift()).abs()
-                    }).max(axis=1)
-                    atr = tr.rolling(14).mean().iloc[-1]
-                    stop_pct = round((atr / price) * 100 * 1.5, 1)
-                    if stop_pct < 1.0:
-                        stop_pct = 1.0
-                    if stop_pct > 5.0:
-                        stop_pct = 5.0
-                stop_price = round(price * (1 - stop_pct / 100), 2)
-                risk_per = price - stop_price
-                tp15 = round(price + risk_per * 1.5, 2)
-                tp2 = round(price + risk_per * 2, 2)
-                st.caption(f"Stop ${stop_price} ({stop_pct}%) · 1.5R ${tp15} · 2R ${tp2}")
-            except Exception:
-                pass
-
+            levels = calc_levels(display, q["price"])
+            st.caption(f"Stop ${levels['stop']} ({levels['stop_pct']}%) · 1.5R ${levels['tp15']} · 2R ${levels['tp2']}")
             show_chart(display)
             st.markdown("**Trade**  " + broker_links(display))
         else:
