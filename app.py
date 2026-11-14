@@ -104,6 +104,49 @@ def get_quote(ticker):
     except Exception:
         return None
 
+def get_technical_bias(ticker):
+    try:
+        hist = yf.Ticker(ticker).history(period="6mo")
+        if hist.empty or len(hist) < 50:
+            return None
+        close = hist["Close"]
+        ma20 = close.rolling(20).mean().iloc[-1]
+        ma50 = close.rolling(50).mean().iloc[-1]
+        price = close.iloc[-1]
+
+        delta = close.diff()
+        gain = delta.clip(lower=0).rolling(14).mean()
+        loss = (-delta.clip(upper=0)).rolling(14).mean()
+        rs = gain / loss
+        rsi = (100 - (100 / (1 + rs))).iloc[-1]
+
+        notes = []
+        bias = "Neutral"
+
+        if price > ma20 and price > ma50:
+            notes.append("Price above both MAs")
+            bias = "Bullish"
+        elif price < ma20 and price < ma50:
+            notes.append("Price below both MAs")
+            bias = "Bearish"
+        else:
+            notes.append("Price mixed vs MAs")
+
+        if rsi < 30:
+            notes.append("RSI oversold")
+            if bias == "Neutral":
+                bias = "Bullish"
+        elif rsi > 70:
+            notes.append("RSI overbought")
+            if bias == "Neutral":
+                bias = "Bearish"
+        else:
+            notes.append(f"RSI {round(rsi, 1)}")
+
+        return {"bias": bias, "notes": notes}
+    except Exception:
+        return None
+
 def show_chart(ticker):
     try:
         hist = yf.Ticker(ticker).history(period="6mo")
@@ -213,6 +256,11 @@ def page_main(session):
         q = get_quote(ticker)
         if q:
             st.metric(ticker, f"${q['price']}", f"{q['change']:+.2f}%")
+            bias = get_technical_bias(ticker)
+            if bias:
+                st.write(f"**Bias:** {bias['bias']}")
+                for n in bias["notes"]:
+                    st.caption(n)
             show_chart(ticker)
         else:
             st.warning("No data")
