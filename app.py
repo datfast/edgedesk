@@ -265,6 +265,7 @@ def get_ideas(limit=5):
                 continue
             try:
                 hist = yf.Ticker(t).history(period="1mo")
+                price = q["price"]
                 if len(hist) < 14:
                     stop_pct = 2.0
                 else:
@@ -277,12 +278,11 @@ def get_ideas(limit=5):
                         "lc": (low - close.shift()).abs()
                     }).max(axis=1)
                     atr = tr.rolling(14).mean().iloc[-1]
-                    stop_pct = round((atr / q["price"]) * 100 * 1.5, 1)
+                    stop_pct = round((atr / price) * 100 * 1.5, 1)
                     if stop_pct < 1.0:
                         stop_pct = 1.0
                     if stop_pct > 5.0:
                         stop_pct = 5.0
-                price = q["price"]
                 stop_price = round(price * (1 - stop_pct / 100), 2)
                 risk_per = price - stop_price
                 tp15 = round(price + risk_per * 1.5, 2)
@@ -415,6 +415,35 @@ def page_main(session):
                 st.write(f"**Lean:** {bias['lean']}")
                 for n in bias["notes"]:
                     st.caption(n)
+
+            try:
+                hist = yf.Ticker(display).history(period="1mo")
+                price = q["price"]
+                if len(hist) < 14:
+                    stop_pct = 2.0
+                else:
+                    high = hist["High"]
+                    low = hist["Low"]
+                    close = hist["Close"]
+                    tr = pd.DataFrame({
+                        "hl": high - low,
+                        "hc": (high - close.shift()).abs(),
+                        "lc": (low - close.shift()).abs()
+                    }).max(axis=1)
+                    atr = tr.rolling(14).mean().iloc[-1]
+                    stop_pct = round((atr / price) * 100 * 1.5, 1)
+                    if stop_pct < 1.0:
+                        stop_pct = 1.0
+                    if stop_pct > 5.0:
+                        stop_pct = 5.0
+                stop_price = round(price * (1 - stop_pct / 100), 2)
+                risk_per = price - stop_price
+                tp15 = round(price + risk_per * 1.5, 2)
+                tp2 = round(price + risk_per * 2, 2)
+                st.caption(f"Stop ${stop_price} ({stop_pct}%) · 1.5R ${tp15} · 2R ${tp2}")
+            except Exception:
+                pass
+
             show_chart(display)
             st.markdown("**Trade**  " + broker_links(display))
         else:
