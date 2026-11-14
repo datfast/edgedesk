@@ -21,7 +21,7 @@ CRYPTO_ALIASES = {
     "BCH": "BCH-USD", "UNI": "UNI-USD", "ATOM": "ATOM-USD",
 }
 
-st.set_page_config(page_title="EdgeDesk", page_icon="📊", layout="wide")
+st.set_page_config(page_title="EdgeDesk", page_icon="chart", layout="wide")
 
 st.markdown("""
 <style>
@@ -277,7 +277,7 @@ def page_main(session):
     for i, a in enumerate(session.get("alerts", [])):
         c1, c2 = st.columns([6, 1])
         c1.caption(f"{a['ticker']} {a['direction']} ${a['target']}")
-        if c2.button("×", key=f"alert_rm{i}"):
+        if c2.button("x", key=f"alert_rm{i}"):
             session["alerts"].pop(i)
             save_session(session)
             st.rerun()
@@ -286,4 +286,98 @@ def page_main(session):
     cols = st.columns(3)
     for i, t in enumerate(INDICES):
         q = get_quote(t)
-        cols[i].metric(t, f"${q['price']}" if q else "—", f"{q['change']:+.2f}%" if q else None)
+        cols[i].metric(t, f"${q['price']}" if q else "-", f"{q['change']:+.2f}%" if q else None)
+
+    st.subheader("Focus")
+    focus = get_focus_tickers()
+    fcols = st.columns(len(focus))
+    for i, t in enumerate(focus):
+        q = get_quote(t)
+        fcols[i].metric(t, f"${q['price']}" if q else "-", f"{q['change']:+.2f}%" if q else None)
+
+    st.subheader("Trending")
+    trending = get_stocktwits_trending()
+    if trending:
+        tcols = st.columns(len(trending))
+        for i, item in enumerate(trending):
+            tcols[i].markdown(f"**{item['ticker']}**\n{item['sentiment']}")
+    else:
+        st.caption("Unavailable")
+
+    st.subheader("Chart")
+    ticker = st.text_input("Ticker", placeholder="NVDA, AVAX").strip().upper()
+    if ticker:
+        q = get_quote(ticker)
+        if q:
+            display = q.get("ticker", ticker)
+            st.metric(display, f"${q['price']}", f"{q['change']:+.2f}%")
+            info = get_company_info(display)
+            if info:
+                st.write(f"**{info['name']}**")
+                if info["sector"] or info["industry"]:
+                    st.caption(f"{info['sector']} · {info['industry']}".strip(" ·"))
+                if info["summary"]:
+                    st.caption(info["summary"])
+            bias = get_technical_bias(display)
+            if bias:
+                st.write(f"**Bias:** {bias['bias']}")
+                for n in bias["notes"]:
+                    st.caption(n)
+            show_chart(display)
+            st.markdown("**Trade**  " + broker_links(display))
+        else:
+            st.warning("No data")
+
+    st.subheader("Watchlist")
+    c1, c2 = st.columns([4, 1])
+    new_t = c1.text_input("Add", placeholder="Ticker", label_visibility="collapsed").strip().upper()
+    if c2.button("Add", key="add_watch") and new_t:
+        wl = session.setdefault("watchlist", [])
+        if new_t not in wl:
+            wl.append(new_t)
+            save_session(session)
+            st.rerun()
+    for i, t in enumerate(session.get("watchlist", [])):
+        wc1, wc2 = st.columns([6, 1])
+        q = get_quote(t)
+        if q:
+            wc1.write(f"**{q.get('ticker', t)}**  ${q['price']}  ({q['change']:+.2f}%)")
+        else:
+            wc1.write(t)
+        if wc2.button("x", key=f"rm{i}"):
+            session["watchlist"].pop(i)
+            save_session(session)
+            st.rerun()
+
+    st.subheader("Risk")
+    rc1, rc2, rc3 = st.columns(3)
+    rt = rc1.text_input("Ticker", "NVDA", key="rt").strip().upper()
+    risk_amt = rc2.number_input("$ Risk", value=100.0, step=25.0)
+    stop_pct = rc3.number_input("Stop %", value=2.0, step=0.5)
+    if st.button("Calculate", key="calc_risk"):
+        q = get_quote(rt)
+        if q:
+            price = q["price"]
+            stop = round(price * (1 - stop_pct / 100), 2)
+            risk_per = price - stop
+            shares = int(risk_amt / risk_per) if risk_per > 0 else 0
+            actual = round(shares * risk_per, 2)
+            st.write(f"**Entry** ${price} · **Stop** ${stop}")
+            st.write(f"**Shares** {shares} · **Risk** ${actual}")
+            st.write(f"**1.5R** ${round(price + risk_per * 1.5, 2)} · **2R** ${round(price + risk_per * 2, 2)}")
+        else:
+            st.warning("No price")
+
+    st.subheader("Notes")
+    notes = st.text_area("", session.get("notes", ""), height=80, placeholder="Notes")
+    if st.button("Save", key="save_notes"):
+        session["notes"] = notes
+        save_session(session)
+        st.success("Saved")
+
+def main():
+    session = load_session()
+    page_main(session)
+
+if __name__ == "__main__":
+    main()
