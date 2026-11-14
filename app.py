@@ -121,6 +121,13 @@ def get_technical_bias(ticker):
         loss = (-delta.clip(upper=0)).rolling(14).mean()
         rs = gain / loss
         rsi = (100 - (100 / (1 + rs))).iloc[-1]
+
+        ema12 = close.ewm(span=12, adjust=False).mean()
+        ema26 = close.ewm(span=26, adjust=False).mean()
+        macd_line = ema12 - ema26
+        signal_line = macd_line.ewm(span=9, adjust=False).mean()
+        macd_cross = "bullish" if macd_line.iloc[-1] > signal_line.iloc[-1] else "bearish"
+
         notes = []
         bias = "Neutral"
         lean = "No clear lean"
@@ -137,17 +144,28 @@ def get_technical_bias(ticker):
             notes.append("Price mixed vs MAs")
 
         if rsi < 30:
-            notes.append("RSI oversold")
+            notes.append("RSI oversold zone")
             if bias == "Neutral":
                 bias = "Bullish"
                 lean = "Lean long"
         elif rsi > 70:
-            notes.append("RSI overbought")
+            notes.append("RSI overbought zone")
             if bias == "Neutral":
                 bias = "Bearish"
                 lean = "Lean short"
         else:
             notes.append(f"RSI {round(rsi, 1)}")
+
+        if macd_cross == "bullish":
+            notes.append("MACD above signal")
+            if bias == "Neutral":
+                bias = "Bullish"
+                lean = "Lean long"
+        else:
+            notes.append("MACD below signal")
+            if bias == "Neutral":
+                bias = "Bearish"
+                lean = "Lean short"
 
         return {"bias": bias, "notes": notes, "lean": lean}
     except Exception:
@@ -166,14 +184,63 @@ def show_chart(ticker):
         loss = (-delta.clip(upper=0)).rolling(14).mean()
         rs = gain / loss
         hist["RSI"] = 100 - (100 / (1 + rs))
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.74, 0.26])
-        fig.add_trace(go.Candlestick(x=hist.index, open=hist["Open"], high=hist["High"], low=hist["Low"], close=hist["Close"], name="Price"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=hist.index, y=hist["MA20"], name="MA20", line=dict(color="#f59e0b", width=1.3)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=hist.index, y=hist["MA50"], name="MA50", line=dict(color="#3b82f6", width=1.3)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=hist.index, y=hist["RSI"], name="RSI", line=dict(color="#8b5cf6", width=1.5)), row=2, col=1)
+
+        ema12 = hist["Close"].ewm(span=12, adjust=False).mean()
+        ema26 = hist["Close"].ewm(span=26, adjust=False).mean()
+        hist["MACD"] = ema12 - ema26
+        hist["Signal"] = hist["MACD"].ewm(span=9, adjust=False).mean()
+        hist["Histogram"] = hist["MACD"] - hist["Signal"]
+
+        fig = make_subplots(
+            rows=3, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.03,
+            row_heights=[0.55, 0.22, 0.23]
+        )
+        fig.add_trace(go.Candlestick(
+            x=hist.index,
+            open=hist["Open"], high=hist["High"],
+            low=hist["Low"], close=hist["Close"],
+            name="Price"
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=hist.index, y=hist["MA20"],
+            name="MA20", line=dict(color="#f59e0b", width=1.3)
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=hist.index, y=hist["MA50"],
+            name="MA50", line=dict(color="#3b82f6", width=1.3)
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=hist.index, y=hist["RSI"],
+            name="RSI", line=dict(color="#8b5cf6", width=1.5)
+        ), row=2, col=1)
         fig.add_hline(y=70, line_dash="dash", line_color="#ef4444", row=2, col=1)
         fig.add_hline(y=30, line_dash="dash", line_color="#22c55e", row=2, col=1)
-        fig.update_layout(height=380, margin=dict(l=8, r=8, t=28, b=8), xaxis_rangeslider_visible=False, showlegend=True, paper_bgcolor="#ffffff", plot_bgcolor="#ffffff", title=dict(text=ticker, font=dict(size=14)))
+        fig.add_hrect(y0=70, y1=100, fillcolor="rgba(239,68,68,0.08)", line_width=0, row=2, col=1)
+        fig.add_hrect(y0=0, y1=30, fillcolor="rgba(34,197,94,0.08)", line_width=0, row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=hist.index, y=hist["MACD"],
+            name="MACD", line=dict(color="#0ea5e9", width=1.4)
+        ), row=3, col=1)
+        fig.add_trace(go.Scatter(
+            x=hist.index, y=hist["Signal"],
+            name="Signal", line=dict(color="#f97316", width=1.2)
+        ), row=3, col=1)
+        colors = ["#22c55e" if v >= 0 else "#ef4444" for v in hist["Histogram"]]
+        fig.add_trace(go.Bar(
+            x=hist.index, y=hist["Histogram"],
+            name="Histogram", marker_color=colors
+        ), row=3, col=1)
+        fig.update_layout(
+            height=520,
+            margin=dict(l=8, r=8, t=28, b=8),
+            xaxis_rangeslider_visible=False,
+            showlegend=True,
+            paper_bgcolor="#ffffff",
+            plot_bgcolor="#ffffff",
+            title=dict(text=ticker, font=dict(size=14))
+        )
         st.plotly_chart(fig, use_container_width=True)
     except Exception:
         st.caption("Chart unavailable")
@@ -255,7 +322,7 @@ def broker_links(ticker):
     links.append(f"[Coinbase](https://www.coinbase.com/price/{clean.lower()})")
     return " · ".join(links)
 
-def calc_levels(ticker, price):
+def calc_levels(ticker, price, direction="long"):
     try:
         hist = yf.Ticker(ticker).history(period="1mo")
         if len(hist) < 14:
@@ -275,34 +342,53 @@ def calc_levels(ticker, price):
                 stop_pct = 1.0
             if stop_pct > 5.0:
                 stop_pct = 5.0
-        stop_price = round(price * (1 - stop_pct / 100), 2)
-        risk_per = price - stop_price
+        if direction == "long":
+            stop_price = round(price * (1 - stop_pct / 100), 2)
+            risk_per = price - stop_price
+            tp15 = round(price + risk_per * 1.5, 2)
+            tp2 = round(price + risk_per * 2, 2)
+        else:
+            stop_price = round(price * (1 + stop_pct / 100), 2)
+            risk_per = stop_price - price
+            tp15 = round(price - risk_per * 1.5, 2)
+            tp2 = round(price - risk_per * 2, 2)
         return {
             "stop": stop_price,
             "stop_pct": stop_pct,
-            "tp15": round(price + risk_per * 1.5, 2),
-            "tp2": round(price + risk_per * 2, 2)
+            "tp15": tp15,
+            "tp2": tp2
         }
     except Exception:
-        stop_price = round(price * 0.98, 2)
-        risk_per = price - stop_price
-        return {
-            "stop": stop_price,
-            "stop_pct": 2.0,
-            "tp15": round(price + risk_per * 1.5, 2),
-            "tp2": round(price + risk_per * 2, 2)
-        }
+        if direction == "long":
+            stop_price = round(price * 0.98, 2)
+            risk_per = price - stop_price
+            return {
+                "stop": stop_price,
+                "stop_pct": 2.0,
+                "tp15": round(price + risk_per * 1.5, 2),
+                "tp2": round(price + risk_per * 2, 2)
+            }
+        else:
+            stop_price = round(price * 1.02, 2)
+            risk_per = stop_price - price
+            return {
+                "stop": stop_price,
+                "stop_pct": 2.0,
+                "tp15": round(price - risk_per * 1.5, 2),
+                "tp2": round(price - risk_per * 2, 2)
+            }
 
 def get_ideas(lean_type="Lean long", limit=5):
     watch = ["NVDA", "TSLA", "AMD", "AAPL", "META", "AMZN", "MSFT", "GOOGL", "AVGO", "NFLX"]
     ideas = []
+    direction = "long" if lean_type == "Lean long" else "short"
     for t in watch:
         bias = get_technical_bias(t)
         if bias and bias.get("lean") == lean_type:
             q = get_quote(t)
             if not q:
                 continue
-            levels = calc_levels(t, q["price"])
+            levels = calc_levels(t, q["price"], direction)
             ideas.append({
                 "ticker": t,
                 "price": q["price"],
@@ -324,6 +410,11 @@ def page_main(session):
         st.caption("Below 30: often oversold")
         st.caption("Around 50: neutral")
         st.caption("Used as one check for the bias and lean. Not a signal by itself.")
+        st.subheader("MACD")
+        st.write("Moving Average Convergence Divergence.")
+        st.caption("MACD above signal: bullish momentum")
+        st.caption("MACD below signal: bearish momentum")
+        st.caption("Histogram shows strength of the move.")
         st.divider()
         auto = st.checkbox("Auto-refresh (2 min)", key="auto_refresh")
 
@@ -445,7 +536,8 @@ def page_main(session):
                 st.write(f"**Lean:** {bias['lean']}")
                 for n in bias["notes"]:
                     st.caption(n)
-            levels = calc_levels(display, q["price"])
+            direction = "long" if bias and bias.get("lean") == "Lean long" else "short"
+            levels = calc_levels(display, q["price"], direction)
             st.caption(f"Stop ${levels['stop']} ({levels['stop_pct']}%) · 1.5R ${levels['tp15']} · 2R ${levels['tp2']}")
             show_chart(display)
             st.markdown("**Trade**  " + broker_links(display))
