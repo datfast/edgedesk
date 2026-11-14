@@ -6,6 +6,7 @@ from plotly.subplots import make_subplots
 from datetime import datetime
 import json
 from pathlib import Path
+import pandas as pd
 
 DATA_DIR = Path("edgedesk_data")
 DATA_DIR.mkdir(exist_ok=True)
@@ -121,25 +122,33 @@ def get_technical_bias(ticker):
         rsi = (100 - (100 / (1 + rs))).iloc[-1]
         notes = []
         bias = "Neutral"
+        lean = "No clear lean"
+
         if price > ma20 and price > ma50:
             notes.append("Price above both MAs")
             bias = "Bullish"
+            lean = "Lean long"
         elif price < ma20 and price < ma50:
             notes.append("Price below both MAs")
             bias = "Bearish"
+            lean = "Lean short"
         else:
             notes.append("Price mixed vs MAs")
+
         if rsi < 30:
             notes.append("RSI oversold")
             if bias == "Neutral":
                 bias = "Bullish"
+                lean = "Lean long"
         elif rsi > 70:
             notes.append("RSI overbought")
             if bias == "Neutral":
                 bias = "Bearish"
+                lean = "Lean short"
         else:
             notes.append(f"RSI {round(rsi, 1)}")
-        return {"bias": bias, "notes": notes}
+
+        return {"bias": bias, "notes": notes, "lean": lean}
     except Exception:
         return None
 
@@ -245,8 +254,76 @@ def broker_links(ticker):
     links.append(f"[Coinbase](https://www.coinbase.com/price/{clean.lower()})")
     return " · ".join(links)
 
+def get_ideas(limit=5):
+    watch = ["NVDA", "TSLA", "AMD", "AAPL", "META", "AMZN", "MSFT", "GOOGL", "AVGO", "NFLX"]
+    ideas = []
+    for t in watch:
+        bias = get_technical_bias(t)
+        if bias and bias.get("lean") == "Lean long":
+            q = get_quote(t)
+            if not q:
+                continue
+            try:
+                hist = yf.Ticker(t).history(period="1mo")
+                if len(hist) < 14:
+                    stop_pct = 2.0
+                else:
+                    high = hist["High"]
+                    low = hist["Low"]
+                    close = hist["Close"]
+                    tr = pd.DataFrame({
+                        "hl": high - low,
+                        "hc": (high - close.shift()).abs(),
+                        "lc": (low - close.shift()).abs()
+                    }).max(axis=1)
+                    atr = tr.rolling(14).mean().iloc[-1]
+                    stop_pct = round((atr / q["price"]) * 100 * 1.5, 1)
+                    if stop_pct < 1.0:
+                        stop_pct = 1.0
+                    if stop_pct > 5.0:
+                        stop_pct = 5.0
+                price = q["price"]
+                stop_price = round(price * (1 - stop_pct / 100), 2)
+                risk_per = price - stop_price
+                tp15 = round(price + risk_per * 1.5, 2)
+                tp2 = round(price + risk_per * 2, 2)
+                ideas.append({
+                    "ticker": t,
+                    "price": price,
+                    "change": q["change"],
+                    "stop": stop_price,
+                    "stop_pct": stop_pct,
+                    "tp15": tp15,
+                    "tp2": tp2
+                })
+            except Exception:
+                price = q["price"]
+                stop_price = round(price * 0.98, 2)
+                risk_per = price - stop_price
+                ideas.append({
+                    "ticker": t,
+                    "price": price,
+                    "change": q["change"],
+                    "stop": stop_price,
+                    "stop_pct": 2.0,
+                    "tp15": round(price + risk_per * 1.5, 2),
+                    "tp2": round(price + risk_per * 2, 2)
+                })
+        if len(ideas) >= limit:
+            break
+    return ideas
+
 def page_main(session):
     st.title("EdgeDesk")
+
+    with st.sidebar:
+        st.header("Guide")
+        st.subheader("RSI")
+        st.write("Relative Strength Index. A momentum reading from 0 to 100.")
+        st.caption("Above 70: often overbought")
+        st.caption("Below 30: often oversold")
+        st.caption("Around 50: neutral")
+        st.caption("Used as one check for the bias and lean. Not a signal by itself.")
 
     st.subheader("Macro")
     events = get_macro_events()
@@ -295,6 +372,20 @@ def page_main(session):
         q = get_quote(t)
         fcols[i].metric(t, f"${q['price']}" if q else "-", f"{q['change']:+.2f}%" if q else None)
 
+    st.subheader("Ideas")
+    ideas = get_ideas()
+    if ideas:
+        for item in ideas:
+            with st.container():
+                c1, c2 = st.columns([2, 3])
+                c1.metric(item["ticker"], f"${item['price']}", f"{item['change']:+.2f}%")
+                c2.caption("Lean long")
+                c2.caption(f"Stop ${item['stop']} ({item['stop_pct']}%)")
+                c2.caption(f"1.5R ${item['tp15']} · 2R ${item['tp2']}")
+                st.divider()
+    else:
+        st.caption("None right now")
+
     st.subheader("Trending")
     trending = get_stocktwits_trending()
     if trending:
@@ -321,6 +412,7 @@ def page_main(session):
             bias = get_technical_bias(display)
             if bias:
                 st.write(f"**Bias:** {bias['bias']}")
+                st.write(f"**Lean:** {bias['lean']}")
                 for n in bias["notes"]:
                     st.caption(n)
             show_chart(display)
