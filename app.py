@@ -1,6 +1,5 @@
 import streamlit as st
 import yfinance as yf
-import pandas as pd
 from datetime import datetime
 import json
 from pathlib import Path
@@ -9,28 +8,14 @@ DATA_DIR = Path("edgedesk_data")
 DATA_DIR.mkdir(exist_ok=True)
 
 INDICES = ["SPY", "QQQ", "IWM"]
-VIX = "^VIX"
-KEY_STOCKS = ["NVDA", "TSLA", "AMD", "AAPL"]
-ALL_TICKERS = INDICES + [VIX] + KEY_STOCKS
+KEY_STOCKS = ["NVDA", "TSLA", "AMD", "AAPL", "META", "AMZN", "MSFT", "GOOGL", "AVGO", "PLTR"]
 
-st.set_page_config(
-    page_title="EdgeDesk",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="EdgeDesk", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
-.stApp {
-    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-    color: #1e293b;
-}
-.main .block-container {
-    padding-top: 1.5rem;
-    padding-bottom: 2rem;
-    max-width: 1200px;
-}
+.stApp { background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); color: #1e293b; }
+.main .block-container { padding-top: 1.2rem; max-width: 1100px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -42,220 +27,238 @@ def load_session():
     if path.exists():
         with open(path) as f:
             return json.load(f)
-    return {
-        "date": today_str(),
-        "market_bias": "Neutral",
-        "levels": {},
-        "trade_plans": [],
-        "notes": ""
-    }
+    return {"date": today_str(), "watchlist": [], "notes": ""}
 
 def save_session(session):
     path = DATA_DIR / f"session_{today_str()}.json"
     with open(path, "w") as f:
         json.dump(session, f, indent=2)
 
-def fetch_market_data():
-    results = {}
-    for t in ALL_TICKERS:
-        try:
-            hist = yf.Ticker(t).history(period="5d")
-            if not hist.empty:
-                results[t] = hist
-        except Exception:
-            continue
-    return results
+def get_price(ticker):
+    try:
+        hist = yf.Ticker(ticker).history(period="1d")
+        if not hist.empty:
+            return round(float(hist["Close"].iloc[-1]), 2)
+    except:
+        return None
 
-def compute_snapshot(data):
-    snap = {
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "indices": {},
-        "vix": None,
-        "stocks": {},
-        "suggested_bias": "Neutral",
-        "notes": [],
-    }
-    for t in INDICES:
-        if t not in data or data[t].empty:
-            continue
-        df = data[t]
-        last = df.iloc[-1]
-        prev = df.iloc[-2] if len(df) > 1 else last
-        change_pct = ((last["Close"] - prev["Close"]) / prev["Close"]) * 100
-        snap["indices"][t] = {
-            "last": round(float(last["Close"]), 2),
-            "change_pct": round(float(change_pct), 2)
-        }
-    if VIX in data and not data[VIX].empty:
-        snap["vix"] = round(float(data[VIX].iloc[-1]["Close"]), 2)
-    for t in KEY_STOCKS:
-        if t not in data or data[t].empty:
-            continue
-        df = data[t]
-        last = df.iloc[-1]
-        prev = df.iloc[-2] if len(df) > 1 else last
-        change_pct = ((last["Close"] - prev["Close"]) / prev["Close"]) * 100
-        vol = last.get("Volume", 0)
-        avg_vol = df["Volume"].tail(5).mean() if "Volume" in df else 1
-        rvol = float(vol / avg_vol) if avg_vol > 0 else 1
-        snap["stocks"][t] = {
-            "last": round(float(last["Close"]), 2),
-            "change_pct": round(float(change_pct), 2),
-            "rvol": round(rvol, 2)
-        }
-    spy_chg = snap["indices"].get("SPY", {}).get("change_pct", 0)
-    qqq_chg = snap["indices"].get("QQQ", {}).get("change_pct", 0)
-    vix = snap.get("vix") or 20
-    if spy_chg > 0.4 and qqq_chg > 0.4 and vix < 22:
-        snap["suggested_bias"] = "Bullish"
-    elif spy_chg < -0.4 and qqq_chg < -0.4:
-        snap["suggested_bias"] = "Bearish"
-    else:
-        snap["suggested_bias"] = "Neutral"
-    return snap
+def show_mini_chart(ticker):
+    try:
+        hist = yf.Ticker(ticker).history(period="1mo")
+        if not hist.empty:
+            st.line_chart(hist["Close"], height=180)
+    except:
+        st.caption("Chart unavailable")
 
-def render_snapshot(snap):
-    st.caption(f"As of {snap.get('timestamp', '-')}")
-    cols = st.columns(4)
-    for i, t in enumerate(INDICES):
-        info = snap.get("indices", {}).get(t)
-        if info:
-            cols[i].metric(t, f"{info.get('last', 0):.2f}", f"{info.get('change_pct', 0):+.2f}%")
-    if snap.get("vix") is not None:
-        cols[3].metric("VIX", f"{snap['vix']:.2f}")
-    st.markdown(f"**Suggested Bias:** {snap.get('suggested_bias', 'Neutral')}")
+def show_company_info(ticker):
+    try:
+        info = yf.Ticker(ticker).info
+        name = info.get("longName", ticker)
+        sector = info.get("sector", "N/A")
+        industry = info.get("industry", "N/A")
+        summary = info.get("longBusinessSummary", "No description available.")
+        st.markdown(f"**{name}**")
+        st.write(f"**Sector:** {sector}")
+        st.write(f"**Industry:** {industry}")
+        st.write(summary[:500] + "..." if len(summary) > 500 else summary)
+    except:
+        st.caption("Company info unavailable")
 
-def page_pre_market(session):
-    st.header("Pre-Market / Live Market Scan")
-    st.write("Live data for indices, VIX and key stocks")
-    if st.button("Refresh Market Data"):
+def page_scan():
+    st.header("Pre-Market Scan")
+    if st.button("Refresh"):
         st.cache_data.clear()
         st.rerun()
-    with st.spinner("Fetching market data..."):
-        data = fetch_market_data()
-    if not data:
-        st.error("Could not fetch market data")
-        return
-    snap = compute_snapshot(data)
-    render_snapshot(snap)
-    session["market_bias"] = snap.get("suggested_bias", "Neutral")
-    save_session(session)
+    cols = st.columns(4)
+    for i, t in enumerate(INDICES):
+        cols[i].metric(t, get_price(t) or "-")
+    st.subheader("Look up any stock")
+    search = st.text_input("Ticker", placeholder="e.g. NVDA").upper()
+    if search:
+        price = get_price(search)
+        if price:
+            st.metric(search, f"${price}")
+            show_mini_chart(search)
+            with st.expander("What is this company?"):
+                show_company_info(search)
+        else:
+            st.warning("Ticker not found")
+    st.subheader("Key Stocks")
+    for t in KEY_STOCKS:
+        price = get_price(t)
+        with st.expander(f"{t}  •  {price or '-'}"):
+            show_mini_chart(t)
+            show_company_info(t)
 
-def page_after_close(session):
-    st.header("After-Close Summary")
-    st.write("Review relative strength and session notes")
-    notes = st.text_area("Session notes", session.get("notes", ""))
-    if st.button("Save Notes"):
-        session["notes"] = notes
+def page_news():
+    st.header("News")
+    ticker = st.text_input("Ticker", "NVDA").upper()
+    if st.button("Get News"):
+        try:
+            for item in yf.Ticker(ticker).news[:6]:
+                st.markdown(f"**{item.get('title','')}**")
+                st.caption(item.get("publisher",""))
+                st.divider()
+        except:
+            st.info("No news")
+
+def page_watchlist(session):
+    st.header("Watchlist")
+    c1, c2, c3 = st.columns([2,1,1])
+    ticker = c1.text_input("Ticker").upper()
+    side = c2.radio("Side", ["Buy","Sell"], horizontal=True, label_visibility="collapsed")
+    if c3.button("Add") and ticker:
+        session.setdefault("watchlist", []).append({"ticker": ticker, "side": side})
         save_session(session)
-        st.success("Notes saved")
-
-def page_tjr(session):
-    st.header("TJR Checklist")
-    st.write("Liquidity sweep + MSS + FVG/OB")
-    sweep = st.checkbox("Liquidity sweep occurred")
-    mss = st.checkbox("Market structure shift (MSS)")
-    zone = st.checkbox("Price in FVG or Order Block")
-    if sweep and mss and zone:
-        st.success("Valid TJR setup")
-    else:
-        st.info("Waiting for full confluence")
-
-def page_equity(session):
-    st.header("Equity Checklist")
-    st.write("VCP + Pivot Break + RVOL")
-    vcp = st.checkbox("Volatility Contraction Pattern")
-    pivot = st.checkbox("Pivot break")
-    rvol = st.checkbox("Elevated RVOL")
-    if vcp and pivot and rvol:
-        st.success("Valid equity setup")
-    else:
-        st.info("Waiting for full confluence")
+        st.rerun()
+    for i, w in enumerate(session.get("watchlist", [])):
+        a, b = st.columns([3,1])
+        a.write(f"**{w['ticker']}** — {w['side']}")
+        if b.button("Remove", key=f"rm{i}"):
+            session["watchlist"].pop(i)
+            save_session(session)
+            st.rerun()
 
 def page_risk():
     st.header("Risk Calculator")
-    account = st.number_input("Account size", value=10000.0)
-    risk_pct = st.number_input("Risk %", value=1.0)
-    entry = st.number_input("Entry price", value=100.0)
-    stop = st.number_input("Stop price", value=98.0)
-    if entry != stop:
-        risk_per_share = abs(entry - stop)
-        shares = int((account * (risk_pct / 100)) / risk_per_share)
-        st.metric("Shares to buy", shares)
-        st.metric("Dollar risk", round(shares * risk_per_share, 2))
+    ticker = st.text_input("Ticker", "NVDA").upper()
+    risk = st.number_input("Dollar risk", 100.0)
+    stop_pct = st.slider("Stop %", 0.5, 5.0, 2.0)
+    if st.button("Calculate"):
+        price = get_price(ticker)
+        if price:
+            stop = round(price * (1 - stop_pct/100), 2)
+            rps = price - stop
+            shares = int(risk / rps) if rps > 0 else 0
+            st.metric("Price", f"${price}")
+            st.metric("Stop", f"${stop}")
+            st.metric("Shares", shares)
+            st.metric("Dollar Risk", f"${round(shares * rps, 2)}")
+        else:
+            st.warning("No price")
 
-def page_plans(session):
-    st.header("Decision Tree & Trade Plans")
-    st.subheader("Quick Decision Tree")
-    st.write("1. Pre-market scan - set bias")
-    st.write("2. Map Asia / London / PDH / PDL")
-    st.write("3. Sweep + MSS + zone? - TJR plan")
-    st.write("4. High-RVOL + VCP pivot break? - Equity plan")
-    st.write("5. Only take A / A+ setups")
-    bias = st.selectbox("Override bias for today", ["Bullish", "Neutral", "Bearish"])
-    session["market_bias"] = bias
-    save_session(session)
-    st.subheader("Active Trade Plans")
-    plans = session.get("trade_plans", [])
-    if not plans:
-        st.info("No trade plans yet")
+def page_notes(session):
+    st.header("Notes")
+    notes = st.text_area("Notes", session.get("notes",""), height=220)
+    if st.button("Save"):
+        session["notes"] = notes
+        save_session(session)
+        st.success("Saved")
+
+def page_learn():
+    st.header("Learn Trading Styles")
+    st.write("Simple breakdown of common approaches and the basic steps for each.")
+    with st.expander("Day Trading"):
+        st.write("""
+        **What it is:** Open and close trades the same day. No overnight positions.
+        **How to do it:**
+        1. Focus on liquid names (high volume).
+        2. Wait for a clear level (previous day high/low, opening range).
+        3. Enter on a strong move away from that level.
+        4. Use a tight stop just beyond the level.
+        5. Take profits at 1.5–3R or end of day.
+        """)
+    with st.expander("Swing Trading"):
+        st.write("""
+        **What it is:** Hold for a few days to a few weeks.
+        **How to do it:**
+        1. Find a stock in a clear uptrend.
+        2. Wait for a pullback to support.
+        3. Enter when it starts turning back up.
+        4. Place stop below the recent swing low.
+        5. Target the next resistance or 2–3R.
+        """)
+    with st.expander("Liquidity Sweep"):
+        st.write("""
+        **What it is:** Trade the sweep of a liquidity pool followed by a structure shift.
+        **How to do it:**
+        1. Mark Asia high/low, London high/low, previous day high/low.
+        2. Wait for price to sweep one of those levels.
+        3. Look for a strong displacement candle that closes back the other way.
+        4. Enter on the retrace into a fair value gap or order block.
+        5. Stop beyond the sweep high/low.
+        """)
+    with st.expander("Volatility Contraction"):
+        st.write("""
+        **What it is:** A stock tightening before a breakout.
+        **How to do it:**
+        1. Confirm the stock is in an uptrend.
+        2. Look for 2–6 contractions that get tighter.
+        3. Volume should dry up on the final contraction.
+        4. Enter when price breaks above the pivot on expanding volume.
+        5. Stop just below the final contraction low.
+        """)
+    with st.expander("Position Trading"):
+        st.write("""
+        **What it is:** Hold for weeks to months based on bigger trends.
+        **How to do it:**
+        1. Find a strong fundamental or sector trend.
+        2. Enter on a weekly chart breakout or pullback.
+        3. Use a wider stop.
+        4. Hold as long as the bigger trend stays intact.
+        5. Exit when the weekly structure breaks.
+        """)
+
+def timing_suggestion(bias, rvol, hour):
+    tips = []
+    if hour < 10:
+        tips.append("Opening range (9:30–10:00) is still forming. Wait for a clear break.")
+    elif 10 <= hour < 11:
+        tips.append("Good window for liquidity sweeps and opening-range breaks.")
+    elif 11 <= hour < 14:
+        tips.append("Midday is usually slower. Prefer only high-quality setups.")
     else:
-        for i, p in enumerate(plans):
-            with st.expander(f"{i+1}. {p.get('type', 'Plan')}"):
-                st.json(p)
+        tips.append("Afternoon — watch for end-of-day momentum or reversal.")
+    if rvol >= 1.8:
+        tips.append("High RVOL — momentum entries are more reliable.")
+    if bias == "Bullish":
+        tips.append("Bias is bullish — favor long entries on pullbacks.")
+    elif bias == "Bearish":
+        tips.append("Bias is bearish — favor short entries on rallies.")
+    return tips
 
-def page_session(session):
-    st.header("Today's Session")
-    st.write(f"**Date:** {session.get('date')}")
-    st.write(f"**Bias:** {session.get('market_bias', 'Neutral')}")
-    st.write(f"**Plans:** {len(session.get('trade_plans', []))}")
-    st.download_button(
-        "Download session JSON",
-        data=json.dumps(session, indent=2),
-        file_name=f"edgedesk_{today_str()}.json",
-        mime="application/json"
-    )
+def page_timing():
+    st.header("Entry / Exit Timing")
+    ticker = st.text_input("Ticker", "NVDA").upper()
+    bias = st.selectbox("Current bias", ["Bullish", "Neutral", "Bearish"])
+    if st.button("Get Timing"):
+        price = get_price(ticker)
+        if not price:
+            st.warning("Could not load ticker")
+            return
+        try:
+            hist = yf.Ticker(ticker).history(period="5d")
+            vol = hist["Volume"].iloc[-1]
+            avg = hist["Volume"].tail(5).mean()
+            rvol = round(vol / avg, 2) if avg > 0 else 1
+        except:
+            rvol = 1
+        hour = datetime.now().hour
+        tips = timing_suggestion(bias, rvol, hour)
+        st.metric(ticker, f"${price}")
+        st.caption(f"RVOL: {rvol}")
+        for tip in tips:
+            st.write(f"• {tip}")
+        st.info("These are guidelines based on volume and time of day, not guarantees.")
 
 def main():
     st.title("EdgeDesk")
-    st.caption("Clean trading desk - TJR + Minervini - Live data")
     session = load_session()
-    with st.sidebar:
-        st.markdown("### Navigation")
-        page = st.radio(
-            "Go to",
-            [
-                "Pre-Market Scan",
-                "After-Close Summary",
-                "TJR Checklist",
-                "Equity Checklist",
-                "Risk Calculator",
-                "Trade Plans & Tree",
-                "Today's Session"
-            ],
-            label_visibility="collapsed"
-        )
-        st.divider()
-        st.write(f"**Date:** {session.get('date')}")
-        st.write(f"**Bias:** {session.get('market_bias', 'Neutral')}")
-        st.write(f"**Plans:** {len(session.get('trade_plans', []))}")
-        if st.button("Clear cache & refresh"):
-            st.cache_data.clear()
-            st.rerun()
-    if page == "Pre-Market Scan":
-        page_pre_market(session)
-    elif page == "After-Close Summary":
-        page_after_close(session)
-    elif page == "TJR Checklist":
-        page_tjr(session)
-    elif page == "Equity Checklist":
-        page_equity(session)
-    elif page == "Risk Calculator":
+    page = st.sidebar.radio("Pages", ["Scan", "News", "Watchlist", "Risk", "Timing", "Notes", "Learn"])
+    if page == "Scan":
+        page_scan()
+    elif page == "News":
+        page_news()
+    elif page == "Watchlist":
+        page_watchlist(session)
+    elif page == "Risk":
         page_risk()
-    elif page == "Trade Plans & Tree":
-        page_plans(session)
-    elif page == "Today's Session":
-        page_session(session)
+    elif page == "Timing":
+        page_timing()
+    elif page == "Notes":
+        page_notes(session)
+    else:
+        page_learn()
 
 if __name__ == "__main__":
     main()
