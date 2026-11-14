@@ -240,12 +240,27 @@ def get_stocktwits_trending():
 def get_macro_events(limit=6):
     try:
         cals = yf.Calendars()
-        df = cals.get_economic_events_calendar(limit=40)
+        df = cals.get_economic_events_calendar(limit=80)
         if df is None or df.empty:
             return []
-        # Prefer US / major events
+
+        high_keywords = [
+            "CPI", "PPI", "NFP", "Nonfarm", "Non-Farm", "Payroll",
+            "FOMC", "Fed", "Interest Rate", "GDP", "Retail Sales",
+            "Unemployment", "Jobless", "ISM", "PMI", "Consumer Confidence",
+            "Durable Goods", "Housing Starts", "Existing Home", "New Home"
+        ]
+
+        def is_high(name):
+            name_upper = str(name).upper()
+            return any(k.upper() in name_upper for k in high_keywords)
+
         us = df[df["Region"].astype(str).str.upper().isin(["US", "UNITED STATES"])]
-        source = us if not us.empty else df
+        high = us[us.index.to_series().apply(is_high)]
+        source = high if not high.empty else us
+        if source.empty:
+            source = df
+
         events = []
         for name, row in source.head(limit).iterrows():
             time_str = ""
