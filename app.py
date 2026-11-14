@@ -57,10 +57,11 @@ def load_session():
             with open(path) as f:
                 data = json.load(f)
                 data.setdefault("alerts", [])
+                data.setdefault("paper", [])
                 return data
     except Exception:
         pass
-    return {"date": today_str(), "watchlist": [], "notes": "", "alerts": []}
+    return {"date": today_str(), "watchlist": [], "notes": "", "alerts": [], "paper": []}
 
 def save_session(session):
     try:
@@ -506,6 +507,71 @@ def page_main(session):
                         st.rerun()
     else:
         st.caption("None right now")
+
+    st.subheader("Paper Trades")
+    if "paper" not in session:
+        session["paper"] = []
+
+    with st.expander("Open paper trade"):
+        pc1, pc2, pc3 = st.columns(3)
+        pt = pc1.text_input("Ticker", key="paper_t").strip().upper()
+        pdir = pc2.selectbox("Side", ["Long", "Short"], key="paper_dir")
+        pentry = pc3.number_input("Entry", min_value=0.0, value=0.0, step=0.01, key="paper_entry")
+        pc4, pc5, pc6 = st.columns(3)
+        pstop = pc4.number_input("Stop", min_value=0.0, value=0.0, step=0.01, key="paper_stop")
+        ptp15 = pc5.number_input("1.5R", min_value=0.0, value=0.0, step=0.01, key="paper_tp15")
+        ptp2 = pc6.number_input("2R", min_value=0.0, value=0.0, step=0.01, key="paper_tp2")
+        if st.button("Open", key="open_paper") and pt and pentry > 0:
+            session["paper"].append({
+                "ticker": pt,
+                "side": pdir,
+                "entry": pentry,
+                "stop": pstop,
+                "tp15": ptp15,
+                "tp2": ptp2,
+                "status": "Open",
+                "result": ""
+            })
+            save_session(session)
+            st.rerun()
+
+    open_trades = [t for t in session.get("paper", []) if t.get("status") == "Open"]
+    closed_trades = [t for t in session.get("paper", []) if t.get("status") != "Open"]
+
+    if open_trades:
+        st.caption("Open")
+        for i, t in enumerate(open_trades):
+            q = get_quote(t["ticker"])
+            curr = q["price"] if q else None
+            c1, c2, c3 = st.columns([3, 2, 1])
+            line = f"**{t['ticker']}** {t['side']} @ ${t['entry']}"
+            if curr:
+                diff = round(curr - t["entry"], 2)
+                pct = round((curr - t["entry"]) / t["entry"] * 100, 2)
+                if t["side"] == "Short":
+                    diff = -diff
+                    pct = -pct
+                line += f" → ${curr} ({pct:+.2f}%)"
+            c1.write(line)
+            c2.caption(f"Stop ${t['stop']} · 1.5R ${t['tp15']} · 2R ${t['tp2']}")
+            bc1, bc2 = c3.columns(2)
+            if bc1.button("W", key=f"win_{i}"):
+                t["status"] = "Closed"
+                t["result"] = "Win"
+                save_session(session)
+                st.rerun()
+            if bc2.button("L", key=f"loss_{i}"):
+                t["status"] = "Closed"
+                t["result"] = "Loss"
+                save_session(session)
+                st.rerun()
+
+    if closed_trades:
+        st.caption("Closed")
+        wins = sum(1 for t in closed_trades if t.get("result") == "Win")
+        st.caption(f"{wins} / {len(closed_trades)} wins")
+        for t in reversed(closed_trades[-6:]):
+            st.write(f"{t['ticker']} {t['side']} — {t['result']}")
 
     st.subheader("Trending")
     trending = get_stocktwits_trending()
