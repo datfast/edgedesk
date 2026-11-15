@@ -501,23 +501,37 @@ def page_main(session):
 
         if "last_paper_t" not in st.session_state:
             st.session_state.last_paper_t = ""
+        if "last_paper_dir" not in st.session_state:
+            st.session_state.last_paper_dir = ""
 
-        if pt != st.session_state.last_paper_t:
+        if pt != st.session_state.last_paper_t or pdir != st.session_state.last_paper_dir:
             st.session_state.last_paper_t = pt
+            st.session_state.last_paper_dir = pdir
             if pt:
                 q = get_quote(pt)
                 if q:
                     st.session_state.paper_entry = q["price"]
+                    direction = "long" if pdir == "Long" else "short"
+                    levels = calc_levels(pt, q["price"], direction)
+                    st.session_state.paper_stop = levels["stop"]
+                    st.session_state.paper_tp15 = levels["tp15"]
+                    st.session_state.paper_tp2 = levels["tp2"]
                 else:
                     st.session_state.paper_entry = 0.0
+                    st.session_state.paper_stop = 0.0
+                    st.session_state.paper_tp15 = 0.0
+                    st.session_state.paper_tp2 = 0.0
             else:
                 st.session_state.paper_entry = 0.0
+                st.session_state.paper_stop = 0.0
+                st.session_state.paper_tp15 = 0.0
+                st.session_state.paper_tp2 = 0.0
 
         pc3, pc4, pc5 = st.columns(3)
         pentry = pc3.number_input("Entry", min_value=0.0, value=st.session_state.get("paper_entry", 0.0), step=0.01, key="paper_entry")
-        pstop = pc4.number_input("Stop", min_value=0.0, value=0.0, step=0.01, key="paper_stop")
-        ptp15 = pc5.number_input("1.5R", min_value=0.0, value=0.0, step=0.01, key="paper_tp15")
-        ptp2 = st.number_input("2R", min_value=0.0, value=0.0, step=0.01, key="paper_tp2")
+        pstop = pc4.number_input("Stop", min_value=0.0, value=st.session_state.get("paper_stop", 0.0), step=0.01, key="paper_stop")
+        ptp15 = pc5.number_input("1.5R", min_value=0.0, value=st.session_state.get("paper_tp15", 0.0), step=0.01, key="paper_tp15")
+        ptp2 = st.number_input("2R", min_value=0.0, value=st.session_state.get("paper_tp2", 0.0), step=0.01, key="paper_tp2")
 
         if st.button("Open", key="open_paper") and pt and pentry > 0:
             session["paper"].append({
