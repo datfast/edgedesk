@@ -258,24 +258,6 @@ def get_focus_tickers():
         pass
     return FALLBACK_FOCUS
 
-def get_stocktwits_trending():
-    try:
-        r = requests.get("https://api.stocktwits.com/api/2/trending/symbols.json", timeout=5)
-        if r.status_code != 200:
-            return []
-        out = []
-        for s in r.json().get("symbols", [])[:5]:
-            ticker = s.get("symbol", "")
-            if not ticker:
-                continue
-            sent = "Neutral"
-            if isinstance(s.get("sentiment"), dict):
-                sent = s["sentiment"].get("basic", "Neutral")
-            out.append({"ticker": ticker, "sentiment": sent})
-        return out
-    except Exception:
-        return []
-
 def get_macro_events(limit=5):
     try:
         cals = yf.Calendars()
@@ -517,14 +499,22 @@ def page_main(session):
         pt = pc1.text_input("Ticker", key="paper_t").strip().upper()
         pdir = pc2.selectbox("Side", ["Long", "Short"], key="paper_dir")
 
-        default_entry = 0.0
-        if pt:
-            q = get_quote(pt)
-            if q:
-                default_entry = q["price"]
+        if "last_paper_t" not in st.session_state:
+            st.session_state.last_paper_t = ""
+
+        if pt != st.session_state.last_paper_t:
+            st.session_state.last_paper_t = pt
+            if pt:
+                q = get_quote(pt)
+                if q:
+                    st.session_state.paper_entry = q["price"]
+                else:
+                    st.session_state.paper_entry = 0.0
+            else:
+                st.session_state.paper_entry = 0.0
 
         pc3, pc4, pc5 = st.columns(3)
-        pentry = pc3.number_input("Entry", min_value=0.0, value=default_entry, step=0.01, key="paper_entry")
+        pentry = pc3.number_input("Entry", min_value=0.0, value=st.session_state.get("paper_entry", 0.0), step=0.01, key="paper_entry")
         pstop = pc4.number_input("Stop", min_value=0.0, value=0.0, step=0.01, key="paper_stop")
         ptp15 = pc5.number_input("1.5R", min_value=0.0, value=0.0, step=0.01, key="paper_tp15")
         ptp2 = st.number_input("2R", min_value=0.0, value=0.0, step=0.01, key="paper_tp2")
@@ -580,15 +570,6 @@ def page_main(session):
         st.caption(f"{wins} / {len(closed_trades)} wins")
         for t in reversed(closed_trades[-6:]):
             st.write(f"{t['ticker']} {t['side']} — {t['result']}")
-
-    st.subheader("Trending")
-    trending = get_stocktwits_trending()
-    if trending:
-        tcols = st.columns(len(trending))
-        for i, item in enumerate(trending):
-            tcols[i].markdown(f"**{item['ticker']}**\n{item['sentiment']}")
-    else:
-        st.caption("Unavailable")
 
     st.subheader("Chart")
     ticker = st.text_input("Ticker", placeholder="NVDA, AVAX").strip().upper()
